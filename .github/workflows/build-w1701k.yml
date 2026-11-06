@@ -14,6 +14,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/ccache
+      CCACHE_MAXSIZE: 3G
     steps:
       - name: Free disk space
         run: |
@@ -31,6 +34,15 @@ jobs:
       - name: Checkout
         run: git clone --depth 1 --single-branch --no-tags --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" src
 
+      - name: Restore caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ccache
+            src/dl
+          key: build-w1701k-${{ github.run_id }}
+          restore-keys: build-w1701k-
+
       - name: Feeds
         working-directory: src
         run: |
@@ -41,6 +53,7 @@ jobs:
         working-directory: src
         run: |
           cp w1701k.diffconfig .config
+          printf 'CONFIG_CCACHE=y\nCONFIG_CCACHE_DIR="%s"\n' "$CCACHE_DIR" >> .config
           make defconfig
           grep -q '^CONFIG_TARGET_airoha_an7581_DEVICE_gemtek_w1701k-ubi=y' .config
 
@@ -51,6 +64,20 @@ jobs:
       - name: Build
         working-directory: src
         run: make -j"$(nproc)" || make -j1 V=s
+
+      - name: ccache stats
+        if: always()
+        working-directory: src
+        run: ./staging_dir/host/bin/ccache -s || true
+
+      - name: Save caches
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ccache
+            src/dl
+          key: build-w1701k-${{ github.run_id }}
 
       - name: Collect images
         working-directory: src
