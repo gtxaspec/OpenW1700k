@@ -1,0 +1,67 @@
+name: build-w1701k
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-w1701k
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev python3-setuptools python3-dev rsync swig unzip \
+            zlib1g-dev file wget libelf-dev zstd
+
+      - name: Checkout
+        run: git clone --depth 1 --single-branch --no-tags --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" src
+
+      - name: Feeds
+        working-directory: src
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure
+        working-directory: src
+        run: |
+          cp w1701k.diffconfig .config
+          make defconfig
+          grep -q '^CONFIG_TARGET_airoha_an7581_DEVICE_gemtek_w1701k-ubi=y' .config
+
+      - name: Download sources
+        working-directory: src
+        run: make download -j8
+
+      - name: Build
+        working-directory: src
+        run: make -j"$(nproc)" || make -j1 V=s
+
+      - name: Collect images
+        working-directory: src
+        run: |
+          mkdir -p ../out
+          cp bin/targets/airoha/an7581/*w1701k* bin/targets/airoha/an7581/sha256sums ../out/
+          ls -l ../out
+
+      - name: Upload images
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openwrt-gemtek-w1701k-ubi
+          path: out/
+          retention-days: 14
