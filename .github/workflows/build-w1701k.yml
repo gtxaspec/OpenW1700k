@@ -1,4 +1,4 @@
-name: build-w1701k
+name: Build W1701K
 
 on:
   workflow_dispatch:
